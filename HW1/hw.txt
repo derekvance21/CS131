@@ -1,0 +1,24 @@
+My solution for filter_unreachable started with my function get_reachable_symbols, which given a set of rules 
+and a set of reachable nonterminal symbols returns the rules and a superset of reachable nonterminal symbols with 
+any additional nonterminal symbols from the RHS of any rule if the LHS of the rule was in the set of reachable 
+nonterminal symbols. 
+
+This function is passed to computed_fixed_point so that if a set of rules and reachable nonterminal symbols go 
+through get_reachable_symbols and it can't find any additional reachable nonterminal symbols, then there are 
+no more reachable nonterminal symbols to be found. (Where f is get_reachable_symbols, x is the set of reachable 
+nonterminal symbols, Y is the (constant)* set of rules, and thus the fixed point is an instance where f(x, Y) = x, 
+meaning no more reachable nonterminal symbols can be found and x is the final set of reachable nonterminal symbols.)
+
+After this, the final set of reachable nonterminal symbols is used with List.filter to filter out rules with 
+LHS's not in the reachable nonterminal symbol set.
+
+The ineffiency in my method is that get_reachable_symbols has a recursive helper function get_reachable_symbols_rec, 
+necessary because I needed to still return the original set of rules, since it'll be recursively passed to 
+computed_fixed_point, which needs all the rules each time it checks if f(x, y) = x. Rules with LHS's in 
+the set of reachable nonterminal symbols only need to be checked once and then can be discarded, however, so 
+*retaining the entire set of rules (Y) creates an efficiency where my recursive function keeps checking it and adding 
+those RHS nonterminal symbols to the set of reachable nonterminal symbols. This issue could not matter if the 
+grammar is ordered in such a way that no nonterminal symbol on the LHS of a rule appears before the first rule 
+where that nonterminal symbol appears on the RHS (except for the starting symbol, of course), which is pretty 
+sensical to expect for the common case, which is why I chose to not complicate my code and did not solve this 
+inefficiency.
