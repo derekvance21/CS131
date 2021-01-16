@@ -27,7 +27,7 @@ let my_computed_fixed_point_test2 =
 let my_computed_fixed_point_test3 =
   computed_fixed_point (=) (fun x -> x *. x) 0.999 = 0.
 let my_computed_fixed_point_test4 =
-  computed_fixed_point (fun x y -> (x mod 10) = (y mod 10)) (fun x -> x * x) 2
+  computed_fixed_point (fun x y -> (x mod 10) = (y mod 10)) (fun x -> x * x) 2 = 16
 let my_computed_fixed_point_test5 =
   equal_sets (computed_fixed_point equal_sets (fun x -> set_union x ["wolf"]) []) ["wolf"]
 
