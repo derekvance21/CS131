@@ -52,6 +52,20 @@ let awkish_grammar =
          [[T"0"]; [T"1"]; [T"2"]; [T"3"]; [T"4"];
           [T"5"]; [T"6"]; [T"7"]; [T"8"]; [T"9"]])
 
+type english_nonterminals = | S | NP | VP | Det | Noun | Verb
+
+let english_grammar = 
+  (S, 
+    function 
+      | S -> [[N NP;N VP]]
+      | NP -> [[N Det; N Noun]]
+      | Det -> [[T "a"];[T "the"]]
+      | Noun -> [[T "rat"];[T "cheese"];[T "Sally"]]
+      | VP -> [[N Verb;N NP];[N Verb]]
+      | Verb -> [[T "eats"];[T "loves"]])
+
+let english_producer = snd english_grammar;
+
 type giant_nonterminals =
   | Conversation | Sentence | Grunt | Snore | Shout | Quiet
 

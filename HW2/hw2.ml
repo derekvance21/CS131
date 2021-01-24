@@ -34,17 +34,17 @@ type ('terminal, 'result) matcher =
 let rec use_rule rule frag producer accepter =
   match rule with 
   | [] -> accepter frag (* if there are no more symbols in the rule, return result of accepter frag *)
-  | rule_hd::rule_tl -> match rule_hd with
+  | rule_hd::rule_tl -> match (rule_hd, frag) with
     (* if the symbol is a terminal, then check if the hd of frag equals the symbol, if so, call use_rule on the rest of the rule, else, None *)
-    | T rule_hd -> match frag with 
-      | frag_hd::frag_tl when frag_hd = rule_hd -> use_rule rule_tl frag_tl producer accepter
-      | _ -> None
-    | N rule_hd -> match frag with
-      | [] -> None (* there are more symbols to match in the rule, but the fragment is empty *)
-      | _ -> use_rules (producer rule_hd) frag producer accepter
+    | (_, []) -> None
+    | (N nonterm, frag) -> (match use_rules (producer nonterm) frag producer accepter with (* THIS NEEDS WORK *)
+      | Some suffix -> use_rule rule_tl suffix producer accepter
+      | None -> None
+    )
+    | (T term, frag_hd::frag_tl) when frag_hd = term -> use_rule rule_tl frag_tl producer accepter
+    | _ -> None
 
-  
-let rec use_rules rules frag producer accepter = 
+and use_rules rules frag producer accepter = 
   match rules with 
   | [] -> None
   | rules_hd::rules_tl -> (* need a function for if applying the rule 'hd' to frag works *)
@@ -52,7 +52,7 @@ let rec use_rules rules frag producer accepter =
     if not, then recursively pass the same frag to the rules that are left: 'tl'
    *)
     match use_rule rules_hd frag producer accepter with
-    | Some suffix -> suffix
+    | Some suffix -> Some suffix
     | None -> use_rules rules_tl frag producer accepter
 
 let make_matcher = function
