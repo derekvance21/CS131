@@ -31,33 +31,27 @@ let accept_empty_suffix = function
 type ('terminal, 'result) matcher =
   ('terminal, 'result) acceptor -> 'terminal fragment -> 'result option
 
-let rec use_rule rule frag producer accepter =
+let rec use_rule rule producer accepter frag =
   match rule with 
   | [] -> accepter frag (* if there are no more symbols in the rule, return result of accepter frag *)
   | rule_hd::rule_tl -> match (rule_hd, frag) with
+    (* This is like saying, for all the rules that this nonterimal entails, make sure that they can accept the rest of the current rule *)
+    | (N nonterm, frag) -> use_rules (producer nonterm) producer (use_rule rule_tl producer accepter) frag
     (* if the symbol is a terminal, then check if the hd of frag equals the symbol, if so, call use_rule on the rest of the rule, else, None *)
-    | (_, []) -> None
-    | (N nonterm, frag) -> (match use_rules (producer nonterm) frag producer accepter with (* THIS NEEDS WORK *)
-      | Some suffix -> use_rule rule_tl suffix producer accepter
-      | None -> None
-    )
-    | (T term, frag_hd::frag_tl) when frag_hd = term -> use_rule rule_tl frag_tl producer accepter
+    | (T term, frag_hd::frag_tl) when frag_hd = term -> use_rule rule_tl producer accepter frag_tl
     | _ -> None
 
-and use_rules rules frag producer accepter = 
+and use_rules rules producer accepter frag = 
   match rules with 
   | [] -> None
-  | rules_hd::rules_tl -> (* need a function for if applying the rule 'hd' to frag works *)
-  (* if the frag matches the rule 'hd', return the result of accepter frag
-    if not, then recursively pass the same frag to the rules that are left: 'tl'
-   *)
-    match use_rule rules_hd frag producer accepter with
+  | rules_hd::rules_tl -> 
+    match use_rule rules_hd producer accepter frag with
     | Some suffix -> Some suffix
-    | None -> use_rules rules_tl frag producer accepter
+    | None -> use_rules rules_tl producer accepter frag
 
 let make_matcher = function
   | (start_symbol, producer) ->
-    fun acceptor -> function 
-    (* this is the fragment argument *)
-    | hd::tl -> Some hd
-    | [] -> None
+    fun accepter frag -> use_rules (producer start_symbol) producer accepter frag
+
+let make_parser gram = 
+  make_matcher gram accept_all

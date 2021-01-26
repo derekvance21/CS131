@@ -61,7 +61,7 @@ let english_grammar =
       | NP -> [[N Det; N Noun]]
       | Det -> [[T "a"];[T "the"]]
       | Noun -> [[T "rat"];[T "cheese"];[T "Sally"]]
-      | VP -> [[N Verb;N NP];[N Verb]]
+      | VP -> [[N Verb;N NP];[N Verb; N Noun];[N Verb]]
       | Verb -> [[T "eats"];[T "loves"]])
 
 let english_producer = snd english_grammar;
