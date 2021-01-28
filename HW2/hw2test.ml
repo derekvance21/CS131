@@ -1,83 +1,25 @@
-type awksub_nonterminals =
-  | Expr | Term | Lvalue | Incrop | Binop | Num
-
-let awksub_rules =
-   [Expr, [T"("; N Expr; T")"];
-    Expr, [N Num];
-    Expr, [N Expr; N Binop; N Expr];
-    Expr, [N Lvalue];
-    Expr, [N Incrop; N Lvalue];
-    Expr, [N Lvalue; N Incrop];
-    Lvalue, [T"$"; N Expr];
-    Incrop, [T"++"];
-    Incrop, [T"--"];
-    Binop, [T"+"];
-    Binop, [T"-"];
-    Num, [T"0"];
-    Num, [T"1"];
-    Num, [T"2"];
-    Num, [T"3"];
-    Num, [T"4"];
-    Num, [T"5"];
-    Num, [T"6"];
-    Num, [T"7"];
-    Num, [T"8"];
-    Num, [T"9"]]
-
-let awksub_grammar = Expr, awksub_rules
-
-let converted_awksub_grammar = convert_grammar awksub_grammar
-
-let awkish_grammar =
-  (Expr,
-   function
-     | Expr ->
-         [[N Term; N Binop; N Expr];
-          [N Term]]
-     | Term ->
-         [[N Num];
-          [N Lvalue];
-          [N Incrop; N Lvalue];
-          [N Lvalue; N Incrop];
-          [T"("; N Expr; T")"]]
-     | Lvalue ->
-         [[T"$"; N Expr]]
-     | Incrop ->
-         [[T"++"];
-          [T"--"]]
-     | Binop ->
-         [[T"+"];
-          [T"-"]]
-     | Num ->
-         [[T"0"]; [T"1"]; [T"2"]; [T"3"]; [T"4"];
-          [T"5"]; [T"6"]; [T"7"]; [T"8"]; [T"9"]])
-
-type english_nonterminals = | S | NP | VP | Det | Noun | Verb
+type english_nonterminals = | S | NP | VP | PP | NOM | Det | Noun | Adj | Verb | ProNoun | ProperNoun | Prep
 
 let english_grammar = 
   (S, 
     function 
       | S -> [[N NP;N VP]]
-      | NP -> [[N Det; N Noun]]
-      | Det -> [[T "a"];[T "the"]]
-      | Noun -> [[T "rat"];[T "cheese"];[T "Sally"]]
-      | VP -> [[N Verb;N NP];[N Verb; N Noun];[N Verb]]
-      | Verb -> [[T "eats"];[T "loves"]])
+      | NP -> [[N ProNoun];[N ProperNoun];[N Det; N NOM]]
+      | NOM -> [[N Adj; N NOM];[N Noun; N NOM]; [N Noun]]
+      | VP -> [[N Verb];[N Verb;N NP];[N Verb; N NP; N PP];[N Verb; N PP]]
+      | PP -> [[N Prep; N NP]]
+      | Det -> [[T "the"]; [T "a"]; [T "an"]; [T "that"]]
+      | Noun -> [[T "agent"];[T "spy"];[T "cheese"];[T "cat"];[T "sunset"]; [T "sunrise"]; [T "snack"]; [T "time"]]
+      | Adj -> [[T "secret"];[T "sumptuous"]; [T "brown"]; [T "sophisticated"]]
+      | Verb -> [[T "eats"];[T "loves"]; [T "seeks"]; [T "is"]; [T "begins"]; [T "ends"]]
+      | ProNoun -> [[T "I"]; [T "it"]; [T "you"]]
+      | ProperNoun -> [[T "UCLA"]; [T "Los"; T "Angeles"]; [T "Sylvester"; T "Stallone"]]
+      | Prep -> [[T "from"]; [T "to"];[T "on"]; [T "alongside"]; [T "in"]])
 
-let english_producer = snd english_grammar;
+let english_frag = ["the";"sophisticated";"secret";"agent";"spy";"cat";"seeks";"a";"sumptuous";"sunset";"snack";"alongside";"Sylvester";"Stallone"]
 
-type giant_nonterminals =
-  | Conversation | Sentence | Grunt | Snore | Shout | Quiet
+let make_matcher_test = ((make_matcher english_grammar accept_empty_suffix english_frag) = Some [])
 
-let giant_grammar =
-  Conversation,
-  [Snore, [T"ZZZ"];
-   Quiet, [];
-   Grunt, [T"khrgh"];
-   Shout, [T"aooogah!"];
-   Sentence, [N Quiet];
-   Sentence, [N Grunt];
-   Sentence, [N Shout];
-   Conversation, [N Snore];
-   Conversation, [N Sentence; T","; N Conversation]]
-   
+let make_parser_test = match make_parser english_grammar english_frag with 
+| Some parse_tree -> ((parse_tree_leaves parse_tree) = english_frag)
+| None -> false

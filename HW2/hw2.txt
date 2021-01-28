@@ -1,0 +1,56 @@
+I decided to not write match_parser in terms of make_matcher, because the 
+type system of OCaml is too restrictive to allow doing so in the simple 
+way I wanted to. To implement make_parser I wanted to use make_matcher and 
+just pass it an altered accepter function that would return a list of rules 
+used in the derivation, but this was not possible. So, in order to keep the 
+functions readable and easier to understand, I left the functions as is, 
+making minor changes in my parse_match_rules function to allow it to return 
+a list of rules rather than a list of strings as is the case for the normal 
+make_matcher. 
+
+I also tried to reduce duplication by sharing the match_rule function. This 
+function calls the match_rules function, so I thought having match_rule be 
+able to chose whether to call parse_match_rules (which returns a list of 
+rules) or match_rules (which returns a fragment) would lessen code repetition. 
+OCaml didn't allow this though because the two functions have fundamentally 
+different types. 
+
+A weakness in my code is that it cannot handle grammars where a nonterminal 
+has as its first rule a rule where the first element is that nonterminal. 
+Because our code checks rules from left to right, it will continue to recurse 
+indefinitely on that nonterminal, never able to check what might be past that 
+symbol. So, for my example grammar, there are recursive rules, but the rule's 
+nonterminal symbol always appears at the end of the rule.
+
+For example, a rule like NOM -> [[N NOM; N Noun]; N Noun] will recurse forever 
+because in my match_rule function, it will continue to call match_rules with 
+the rules of NOM, and match_rules will then turn around and ask match_rule to 
+match the rule [N NOM; N Noun], upon which the execution will repeat. Thus, 
+the grammars my code can handle have to be written without left-hand recursion.
+
+Another way my code fails is with circular rules that follow the same left 
+recursive problem as above. If the start symbol S has the rule [N Noun], and 
+then Noun has the rules [N S], and [T "circle"], in that order, then when 
+given the fragment "circle" there is a valid parse (S -> Noun -> "circle"), 
+but my code produces a stack overflow, because the terminal rule is listed 
+after the nonterminal rule, and so it keeps looping between the rules for S 
+and the rules for Noun, but can never get to the second rule of Noun.
+
+This type of grammar would complicate possible simple solutions for the left 
+recursive grammar problem, because it would be easy to recognize at runtime 
+the first situation, but it would be much harder to recognize a circular 
+grammar path at runtime, ala the second situation. Thus, some filtering of the 
+grammar rules probably needs to happen before trying to match the fragment. 
+
+I found that implementing make_matcher was relatively intuitive, and I used 
+Professor Eggert's lecture about the old DNA-parsing homework to be very 
+instructive, only once I had tried solving the problem on my own for a while. 
+The part about append_matchers and or_matchers was really helpful, because 
+the grammar's we had to solve follow this structure. A rule has to match one 
+symbol after the other in order, so a form of append_matchers was needed. 
+Then, a nonterminal can use one of any set of rules, so a form of or_matchers 
+was needed. I thought this project was very good for making me think in a 
+different way about programming because of the interesting functional and 
+pseudo-statically typed nature of OCaml, but I was disappointed that I 
+couldn't find an intuitive way to link make_parser and make_matcher while 
+still following OCaml's type system.
