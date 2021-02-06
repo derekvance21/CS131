@@ -4,7 +4,7 @@ testNums=(1 2 3 4)
 for serverNum in ${serverNums[*]}; do
     for testNum in ${testNums[*]}; do
         echo 'size,threads,class,totalReal(s),totalCPU(s),avgswapReal(ns),avgswapCPU(ns)' > lnxsrv${serverNum}-tests${testNum}.csv
-        cat lnxsrv06-tests1.txt | tr "\n" "~" | sed -E "s/ n?s (real|CPU)//g" | grep -oE "([0-9\.]+|Synchronized|AcmeSafe|Unsynchronized|Null)~?" | tr "\n" "," | tr "~" "\n" | sed -E 's/^,//' >> lnxsrv${serverNum}-tests${testNum}.csv
+        cat lnxsrv${serverNum}-tests${testNum}.txt | tr "\n" "~" | sed -E "s/ n?s (real|CPU)//g" | grep -oE "([0-9\.]+|Synchronized|AcmeSafe|Unsynchronized|Null)~?" | tr "\n" "," | tr "~" "\n" | sed -E 's/^,//' >> lnxsrv${serverNum}-tests${testNum}.csv
     done
 done
 
