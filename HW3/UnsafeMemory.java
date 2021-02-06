@@ -64,13 +64,15 @@ class UnsafeMemory {
 	for (var i = 0; i < nThreads; i++)
 	    cputime += test[i].cpuTime();
 	double dTransitions = nTransitions;
-	System.out.format("Array Size: %d, nThreads: %d, class: %s, Total time: %g s real, %g s CPU, Average swap time: %g ns real, %g ns CPU\n",
-			  s.size(), nThreads, classState,
-			  realtime / 1e9, cputime / 1e9, realtime / dTransitions * nThreads,
-			  cputime / dTransitions);
-	// System.out.format("Average swap time %g ns real, %g ns CPU\n",
-	// 		  realtime / dTransitions * nThreads,
+	// System.out.format("Array Size: %d, nThreads: %d, class: %s, Total time: %g s real, %g s CPU, Average swap time: %g ns real, %g ns CPU\n",
+	// 		  s.size(), nThreads, classState,
+	// 		  realtime / 1e9, cputime / 1e9, realtime / dTransitions * nThreads,
 	// 		  cputime / dTransitions);
+	System.out.format("Total time %g s real, %g s CPU\n",
+			  realtime / 1e9, cputime / 1e9);
+	System.out.format("Average swap time %g ns real, %g ns CPU\n",
+			  realtime / dTransitions * nThreads,
+			  cputime / dTransitions);
     }
 
     private static void test(long[] output) {
