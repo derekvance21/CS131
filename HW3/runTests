@@ -1,0 +1,12 @@
+arraySizes=(5 100 500)
+threadCounts=(1 8 16 40)
+classes=("Synchronized" "AcmeSafe" "Unsynchronized" "Null")
+
+for arraySize in ${arraySizes[*]}; do
+    for threadCount in ${threadCounts[*]}; do
+        for class in ${classes[*]}; do
+            echo "testing ${class}State with ${threadCount} threads and ${arraySize}-sized array:" >&2
+            time timeout 3600 java UnsafeMemory ${class} ${threadCount} 10000000 ${arraySize}
+        done
+    done
+done
