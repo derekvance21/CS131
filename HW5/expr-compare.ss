@@ -1,5 +1,4 @@
 #lang racket
-; (provide expr-compare)
 (provide (all-defined-out))
 
 #| Expressions allows (subset of Racket expressions)
@@ -179,7 +178,7 @@ special forms
                 (quoth a '(a)))) ; a is a bound variable here (a!b)
         (if if (λ (arg) (+ arg λ)) 18.1)
         (lambda (dog) (+ dog))))
-        
+
 (define test-expr-y 
     '((λ (λ else q) (λ (d) (lambda (arg) lambda))) ; d is not binded to c above, since λ is now a bound variable, not the special form. However, can use lambda as a special form, because only λ is binded
         (lambda (b) 
