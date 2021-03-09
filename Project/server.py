@@ -124,18 +124,21 @@ async def handle_AT(writer, cmd):
 
 async def handle_WHATSAT(writer, cmd):
     client = clients.get(cmd['client'])
-    msg = create_AT(client['server'], client['diff'], cmd['client'], client['loc'], client['time'])
-    async with aiohttp.ClientSession() as session:
-        params = [('radius', cmd['radius'] * 1000), ('key', GOOGLE_PLACES_API_KEY), ('location', ','.join(map(lambda x: str(x), client['loc'])))]
-        async with session.get(GOOGLE_PLACES_API_URL, params=params) as response:
-            text = await response.text()
-            data = json.loads(text)
-            results = data.get("results")
-            if results:
-                data.update({"results": results[:cmd['limit']]})
+    if not client:
+        await output_msg(writer, f"? {' '.join(map(lambda x: str(x), cmd.values()))}\n")
+    else:
+        msg = create_AT(client['server'], client['diff'], cmd['client'], client['loc'], client['time'])
+        async with aiohttp.ClientSession() as session:
+            params = [('radius', cmd['radius'] * 1000), ('key', GOOGLE_PLACES_API_KEY), ('location', ','.join(map(lambda x: str(x), client['loc'])))]
+            async with session.get(GOOGLE_PLACES_API_URL, params=params) as response:
+                text = await response.text()
+                data = json.loads(text)
+                results = data.get("results")
+                if results:
+                    data.update({"results": results[:cmd['limit']]})
 
-            msg += re.sub(r"\n+", "\n", json.dumps(data, sort_keys=True, indent=3).rstrip()) + "\n\n"
-            await output_msg(writer, msg)
+                msg += re.sub(r"\n+", "\n", json.dumps(data, sort_keys=True, indent=3).rstrip()) + "\n\n"
+                await output_msg(writer, msg)
 
 
 HANDLES = {
