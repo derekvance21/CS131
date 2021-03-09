@@ -14,6 +14,13 @@ SERVERS = ["Riley", "Jaquez", "Bernard", "Juzang", "Campbell"]
 PORTS = [x for x in range(15700, 15705)] # [15700, 15704]
 SERVER_TO_PORT = dict(zip(SERVERS, PORTS))
 PORT_TO_SERVER = dict(zip(PORTS, SERVERS))
+SERVER_TO_NEIGHBORS = {
+    "Riley": ["Jaquez", "Juzang"],
+    "Jaquez": ["Riley", "Bernard"],
+    "Bernard": ["Jaquez", "Juzang", "Campbell"],
+    "Juzang": ["Riley", "Bernard", "Campbell"],
+    "Campbell": ["Bernard", "Juzang"]
+}
 
 FORMATS = {
     "IAMAT": ["name", "client", "loc", "time"],
@@ -63,47 +70,72 @@ async def api_req():
             print(await response.text())
 
 
-def log_input(msg, source, log):
-    log_info(f"Input: {msg!r} from {source}", log)
+def log_input(msg, src):
+    log_info(f"Input: {msg!r} from {PORT_TO_SERVER.get(src[1]) or src}")
 
-def log_output(msg, dest, log):
-    log_info(f"Output: {msg!r} to {dest}", log)
+def log_output(msg, dest):
+    port = 
+    
+    log_info(f"Output: {msg!r} to {PORT_TO_SERVER.get(dest[1]) or dest}")
 
-def log_info(msg, log):
+def log_info(msg):
+    with open(f"{server_name}.log", "a") as log:
+        log.write(f"{msg}\n")
     print(msg)
-    log.write(f"{msg}\n")
 
 
-async def handle_IAMAT(reader, writer, cmd, log):
-    server = PORT_TO_SERVER.get(writer.get_extra_info('sockname')[1])
-    diff = (Decimal(time.time_ns()) / 1000000000) - cmd['time']
-    loc = ''.join(map(lambda x: f"{'+' if x > 0 else ''}{x}", cmd['loc']))
-    resp = f"AT {server} {diff} {cmd['client']} {loc} {cmd['time']}\n"
-    writer.write(resp.encode())
-    await writer.drain()
-    log_output(resp, writer.get_extra_info('peername'), log)
-
-    writer.close()
-    print(f"Closed the connection to {writer.get_extra_info('peername')}")
-
+def check_to_propagate(cmd):
     client = clients.get(cmd["client"])
-    # old message: stored client data is newer than this command
-    if client and cmd["time"] <= client["time"]:
-        pass
-    else:
+    # old message: stored client data is at least as new as this command
+    if not client or client["time"] < cmd["time"]:
         clients.update({cmd["client"]: {"loc": cmd["loc"], "time": cmd["time"]}})
         print(clients)
-        # send to neighbors
-        # reader, writer = await asyncio.open_connection('localhost', 15700)
+        return True
+    else:
+        return False
 
-    
 
-async def handle_AT(reader, writer, cmd, log):
+
+async def forward_AT(msg, server):
+    try:
+        reader, writer = await asyncio.open_connection('localhost', SERVER_TO_PORT.get(server))
+        writer.write(msg.encode())
+        await writer.drain()
+        writer.close()
+        log_output(msg, writer.get_extra_info('peername'))
+    except ConnectionRefusedError:
+        log_info(f"Failed: {msg!r} to {server}")
+
+
+async def propagate(msg, src=None):
+    # propagate to neighbors that aren't the source of the message
+    forwards = (forward_AT(msg, neighbor) for neighbor in SERVER_TO_NEIGHBORS.get(server_name) if neighbor != src)
+    await asyncio.gather(*forwards)
+
+
+async def handle_IAMAT(writer, cmd):
+    diff = Decimal(time.time_ns()) / 1000000000 - cmd['time']
+    loc = ''.join(map(lambda x: f"{'+' if x >= 0 else ''}{x}", cmd['loc']))
+    msg = f"AT {server_name} {'+' if diff >= 0 else ''}{diff} {cmd['client']} {loc} {cmd['time']}\n"
+    writer.write(msg.encode())
+    await writer.drain()
+    writer.close()
+    log_output(msg, writer.get_extra_info('peername'))
+
+    if check_to_propagate(cmd):
+        await propagate(msg)
+
+
+async def handle_AT(writer, cmd):
+    if check_to_propagate(cmd):
+        loc = ''.join(map(lambda x: f"{'+' if x >= 0 else ''}{x}", cmd['loc']))
+        msg = f"AT {server_name} {'+' if cmd['diff'] >= 0 else ''}{cmd['diff']} {cmd['client']} {loc} {cmd['time']}\n"
+        await propagate(msg, src=cmd["server"])
+
+
+async def handle_WHATSAT(writer, cmd):
     pass
 
-
-async def handle_WHATSAT(reader, writer, cmd, log):
-    pass
 
 HANDLES = {
     "IAMAT": handle_IAMAT,
@@ -111,33 +143,31 @@ HANDLES = {
     "WHATSAT": handle_WHATSAT
 }
 
-
 async def handle_msg(reader, writer):
-    with open(f"{server_name}.log", "a") as log:
-        data = await reader.read()
-        msg = data.decode()
-        addr = writer.get_extra_info('peername')
+    data = await reader.read()
+    msg = data.decode()
+    addr = writer.get_extra_info('peername')
 
-        log_input(msg, addr, log)
+    log_input(msg, addr)
 
-        try:
-            cmd = parse_msg(msg)
-            
-        except Exception as e:
-            writer.write(f"? {msg}".encode())
-            await writer.drain()
-            log_output(f"? {msg}", addr, log)
-            writer.close()
-            print(f"Closed the connection to {addr}")
-            return
+    try:
+        cmd = parse_msg(msg)
+        handle_cmd = HANDLES.get(cmd["name"])
+        await handle_cmd(writer, cmd)
+        
+    except Exception:
+        writer.write(f"? {msg}\n".encode())
+        await writer.drain()
+        writer.close()
+        # print(f"Closed the connection to {addr}")
+        log_output(f"? {msg}\n", addr)
 
-        await HANDLES.get(cmd["name"])(reader, writer, cmd, log)
-    
 
 async def main(server_name):
     server = await asyncio.start_server(handle_msg, 'localhost', SERVER_TO_PORT.get(server_name))
     addr = server.sockets[0].getsockname()
-    print(f'Serving on {addr}')
+
+    log_info(f"Server going up on {addr}")
 
     async with server:
         await server.serve_forever()
@@ -148,7 +178,7 @@ if __name__ == "__main__":
     except IndexError:
         raise SystemExit("Usage: server.py <server_name>")
 
-    if server_name not in SERVER_TO_PORT:
+    if server_name not in SERVER_TO_PORT or len(sys.argv) != 2:
         raise SystemExit("Usage: server.py <server_name>")
 
     try:
@@ -156,4 +186,5 @@ if __name__ == "__main__":
         # print(parse_msg("   AT Riley +0.263873386 kiwi.cs.ucla.edu +34.068930-118.445127 1614209128.918963997   \n  "))
 
     except KeyboardInterrupt:
+        log_info(f"Server going down\n---")
         sys.exit(0)
