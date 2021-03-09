@@ -3,17 +3,17 @@ import json
 import aiohttp
 import sys
 import re
-import os
 import re
 import time
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from env import GOOGLE_PLACES_API_KEY
-GOOGLE_PLACES_API_URL="https://maps.googleapis.com/maps/api/place/nearbysearch/json"
 
+GOOGLE_PLACES_API_URL="https://maps.googleapis.com/maps/api/place/nearbysearch/json"
 SERVERS = ["Riley", "Jaquez", "Bernard", "Juzang", "Campbell"]
 PORTS = [x for x in range(15700, 15705)] # [15700, 15704]
 SERVER_TO_PORT = dict(zip(SERVERS, PORTS))
 PORT_TO_SERVER = dict(zip(PORTS, SERVERS))
+
 SERVER_TO_NEIGHBORS = {
     "Riley": ["Jaquez", "Juzang"],
     "Jaquez": ["Riley", "Bernard"],
@@ -24,14 +24,11 @@ SERVER_TO_NEIGHBORS = {
 
 FORMATS = {
     "IAMAT": ["name", "client", "loc", "time"],
-    "AT": ["name", "server", "diff", "client", "loc", "time"],
+    "AT": ["name", "server", "diff", "client", "loc", "time", "src"],
     "WHATSAT": ["name", "client", "radius", "limit"]
 }
 
-
-
 clients = {}
-
 
 def parse_msg(msg):
     try:
@@ -41,13 +38,12 @@ def parse_msg(msg):
         if len(fields) != len(FORMATS.get(name)):
             raise Exception(msg)
 
-        cmd = dict(zip(FORMATS.get(name), fields) )#, msg=re.sub(r"\s+", " ", msg.strip()))
+        cmd = dict(zip(FORMATS.get(name), fields))
         
         ## type checks/conversions
         if name in ["IAMAT", "AT"]:
             cmd["time"] = Decimal(cmd.get("time"))
             cmd["loc"] = tuple(map(lambda x: float(x), filter(lambda x: x, re.findall(r"([-\+]\d+\.?\d*)", cmd.get("loc")))))
-            # if location not in valid <latitude><longitude>, raise exception
             if len(cmd["loc"]) != 2:
                 raise Exception(msg)
         if name in ["AT"]:
@@ -55,86 +51,91 @@ def parse_msg(msg):
         if name in ["WHATSAT"]:
             cmd["radius"] = int(cmd.get("radius"))
             cmd["limit"] = int(cmd.get("limit"))
+            if cmd["radius"] > 50 or cmd["limit"] > 20:
+                raise Exception(msg)
 
         return cmd
     
-    except (IndexError, ValueError, TypeError, InvalidOperation):
+    except:
         raise Exception(msg)
 
 
+async def output_msg(writer, msg):
+    writer.write(msg.encode())
+    await writer.drain()
+    writer.close()
+    log_io(msg, writer.get_extra_info('peername'), "To")
+
+
+def log_io(msg, addr, head):
+    log_info(f"{head} {PORT_TO_SERVER.get(addr[1]) or addr}: {msg!r}")
     
-async def api_req():
-    async with aiohttp.ClientSession() as session:
-        params = [('radius', '10'), ('key', GOOGLE_PLACES_API_KEY), ('location', '-33.867,151.1957362')]
-        async with session.get(GOOGLE_PLACES_API_URL, params=params) as response:
-            print(await response.text())
-
-
-def log_input(msg, src):
-    log_info(f"Input: {msg!r} from {PORT_TO_SERVER.get(src[1]) or src}")
-
-def log_output(msg, dest):
-    port = 
-    
-    log_info(f"Output: {msg!r} to {PORT_TO_SERVER.get(dest[1]) or dest}")
 
 def log_info(msg):
     with open(f"{server_name}.log", "a") as log:
         log.write(f"{msg}\n")
-    print(msg)
 
 
 def check_to_propagate(cmd):
     client = clients.get(cmd["client"])
     # old message: stored client data is at least as new as this command
     if not client or client["time"] < cmd["time"]:
-        clients.update({cmd["client"]: {"loc": cmd["loc"], "time": cmd["time"]}})
-        print(clients)
+        clients.update({cmd["client"]: {"server": cmd["server"], "loc": cmd["loc"], "time": cmd["time"], "diff": cmd["diff"]}})
         return True
     else:
         return False
 
 
-
-async def forward_AT(msg, server):
+async def forward_AT(msg, neighbor):
     try:
-        reader, writer = await asyncio.open_connection('localhost', SERVER_TO_PORT.get(server))
-        writer.write(msg.encode())
-        await writer.drain()
-        writer.close()
-        log_output(msg, writer.get_extra_info('peername'))
+        reader, writer = await asyncio.open_connection('localhost', SERVER_TO_PORT.get(neighbor))
+        await output_msg(writer, msg)
+
     except ConnectionRefusedError:
-        log_info(f"Failed: {msg!r} to {server}")
+        log_info(f"Failed to {neighbor}: {msg!r}")
 
 
 async def propagate(msg, src=None):
-    # propagate to neighbors that aren't the source of the message
     forwards = (forward_AT(msg, neighbor) for neighbor in SERVER_TO_NEIGHBORS.get(server_name) if neighbor != src)
     await asyncio.gather(*forwards)
+
+    
+def create_AT(server, diff, client, loc, time, src=None):
+    loc = ''.join(map(lambda x: f"{'+' if x >= 0 else ''}{x}", loc))
+    diff = f"{'+' if diff >= 0 else ''}{diff}"
+    return f"AT {server} {diff} {client} {loc} {time} {src or ''}".rstrip() + "\n"
 
 
 async def handle_IAMAT(writer, cmd):
     diff = Decimal(time.time_ns()) / 1000000000 - cmd['time']
-    loc = ''.join(map(lambda x: f"{'+' if x >= 0 else ''}{x}", cmd['loc']))
-    msg = f"AT {server_name} {'+' if diff >= 0 else ''}{diff} {cmd['client']} {loc} {cmd['time']}\n"
-    writer.write(msg.encode())
-    await writer.drain()
-    writer.close()
-    log_output(msg, writer.get_extra_info('peername'))
+    cmd.update({"diff": diff, "server": server_name})
+    msg = create_AT(server_name, diff, cmd['client'], cmd['loc'], cmd['time'])
+    await output_msg(writer, msg)
 
     if check_to_propagate(cmd):
-        await propagate(msg)
-
+        await propagate(f"{msg.rstrip()} {server_name}\n")
+        
 
 async def handle_AT(writer, cmd):
     if check_to_propagate(cmd):
-        loc = ''.join(map(lambda x: f"{'+' if x >= 0 else ''}{x}", cmd['loc']))
-        msg = f"AT {server_name} {'+' if cmd['diff'] >= 0 else ''}{cmd['diff']} {cmd['client']} {loc} {cmd['time']}\n"
-        await propagate(msg, src=cmd["server"])
+        msg = create_AT(cmd['server'], cmd['diff'], cmd['client'], cmd['loc'], cmd['time'], src=server_name)
+        await propagate(msg, src=cmd["src"])
 
 
 async def handle_WHATSAT(writer, cmd):
-    pass
+    client = clients.get(cmd['client'])
+    msg = create_AT(client['server'], client['diff'], cmd['client'], client['loc'], client['time'])
+    async with aiohttp.ClientSession() as session:
+        params = [('radius', cmd['radius'] * 1000), ('key', GOOGLE_PLACES_API_KEY), ('location', ','.join(map(lambda x: str(x), client['loc'])))]
+        async with session.get(GOOGLE_PLACES_API_URL, params=params) as response:
+            text = await response.text()
+            data = json.loads(text)
+            results = data.get("results")
+            if results:
+                data.update({"results": results[:cmd['limit']]})
+
+            msg += re.sub(r"\n+", "\n", json.dumps(data, sort_keys=True, indent=3).rstrip()) + "\n\n"
+            await output_msg(writer, msg)
 
 
 HANDLES = {
@@ -146,21 +147,16 @@ HANDLES = {
 async def handle_msg(reader, writer):
     data = await reader.read()
     msg = data.decode()
-    addr = writer.get_extra_info('peername')
-
-    log_input(msg, addr)
+    log_io(msg, writer.get_extra_info('peername'), "From")
 
     try:
         cmd = parse_msg(msg)
-        handle_cmd = HANDLES.get(cmd["name"])
-        await handle_cmd(writer, cmd)
-        
-    except Exception:
-        writer.write(f"? {msg}\n".encode())
-        await writer.drain()
-        writer.close()
-        # print(f"Closed the connection to {addr}")
-        log_output(f"? {msg}\n", addr)
+    except:
+        await output_msg(writer, f"? {msg}\n")
+        return
+
+    handle_cmd = HANDLES.get(cmd["name"])
+    await handle_cmd(writer, cmd)
 
 
 async def main(server_name):
@@ -181,10 +177,11 @@ if __name__ == "__main__":
     if server_name not in SERVER_TO_PORT or len(sys.argv) != 2:
         raise SystemExit("Usage: server.py <server_name>")
 
+    server_name = sys.argv[1]
+
     try:
         asyncio.run(main(server_name))
-        # print(parse_msg("   AT Riley +0.263873386 kiwi.cs.ucla.edu +34.068930-118.445127 1614209128.918963997   \n  "))
 
     except KeyboardInterrupt:
-        log_info(f"Server going down\n---")
+        log_info(f"Server going down\n")
         sys.exit(0)
