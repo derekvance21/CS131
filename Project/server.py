@@ -44,7 +44,7 @@ def parse_msg(msg):
         if name in ["IAMAT", "AT"]:
             cmd["time"] = Decimal(cmd.get("time"))
             cmd["loc"] = tuple(map(lambda x: float(x), filter(lambda x: x, re.findall(r"([-\+]\d+\.?\d*)", cmd.get("loc")))))
-            if len(cmd["loc"]) != 2:
+            if len(cmd["loc"]) != 2 or not (-90 <= cmd["loc"][0] <= 90 and -180 <= cmd["loc"][1] <= 180):
                 raise Exception(msg)
         if name in ["AT"]:
             cmd["diff"] = Decimal(cmd.get("diff"))
